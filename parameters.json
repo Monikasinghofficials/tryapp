@@ -1,0 +1,41 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "appPassword": {
+            "value": null
+        },
+        "databasePassword": {
+            "value": null
+        },
+        "location": {
+            "value": "eastus"
+        },
+        "stackId": {
+            "value": "mywordpresstry"
+        },
+        "authenticationType": {
+            "value": "password"
+        },
+        "adminPassword": {
+            "value": null
+        },
+        "sshKey": {
+            "value": ""
+        },
+        "vmSize": {
+            "value": "Standard_B1s"
+        },
+        "dataDiskSize": {
+            "value": 50
+        },
+        "customData": {
+            "value": "# blank"
+        },
+        "bitnamiTags": {
+            "value": {
+                "provider": "0FE3856A-6009-4EB1-96C3-1774DA058F86"
+            }
+        }
+    }
+}

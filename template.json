@@ -1,0 +1,412 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "appPassword": {
+            "minLength": 12,
+            "maxLength": 32,
+            "type": "SecureString",
+            "metadata": {
+                "description": "Application password"
+            }
+        },
+        "databasePassword": {
+            "defaultValue": "",
+            "minLength": 0,
+            "maxLength": 128,
+            "type": "SecureString",
+            "metadata": {
+                "description": "Database password"
+            }
+        },
+        "location": {
+            "defaultValue": "[resourceGroup().location]",
+            "type": "String"
+        },
+        "stackId": {
+            "minLength": 3,
+            "maxLength": 23,
+            "type": "String",
+            "metadata": {
+                "description": "Stack ID - it is the Application Stack identifier."
+            }
+        },
+        "authenticationType": {
+            "defaultValue": "password",
+            "allowedValues": [
+                "password",
+                "sshPublicKey"
+            ],
+            "type": "String",
+            "metadata": {
+                "description": "Authentication type"
+            }
+        },
+        "adminPassword": {
+            "defaultValue": "",
+            "type": "SecureString",
+            "metadata": {
+                "description": "OS Admin password"
+            }
+        },
+        "sshKey": {
+            "defaultValue": "",
+            "type": "String",
+            "metadata": {
+                "description": "SSH rsa public key file as a string."
+            }
+        },
+        "vmSize": {
+            "defaultValue": "Standard_D1_v2",
+            "type": "String",
+            "metadata": {
+                "description": "Size of the VM"
+            }
+        },
+        "dataDiskSize": {
+            "defaultValue": 50,
+            "minValue": 10,
+            "maxValue": 2000,
+            "type": "Int",
+            "metadata": {
+                "description": "Data Disk Size in GB"
+            }
+        },
+        "customData": {
+            "defaultValue": "# blank",
+            "type": "String",
+            "metadata": {
+                "description": "customData"
+            }
+        },
+        "BitnamiTags": {
+            "defaultValue": {
+                "provider": "0FE3856A-6009-4EB1-96C3-1774DA058F86"
+            },
+            "type": "Object"
+        }
+    },
+    "variables": {
+        "computeAPIVersion": "2017-12-01",
+        "networkAPIVersion": "2017-10-01",
+        "storageAPIVersion": "2017-10-01",
+        "resourcesAPIVersion": "2018-05-01",
+        "appId": "wordpress",
+        "appVersion": "5.3.2-3-r01",
+        "publicIPAddressName": "[concat(parameters('stackId'), 'ip')]",
+        "appPassword": "[parameters('appPassword')]",
+        "databasePassword": "[parameters('databasePassword')]",
+        "uniqueDeploymentString": "[uniqueString(subscription().subscriptionId, ' ', resourceGroup().id, ' ', deployment().name, parameters('stackId'), variables('appId'), variables('appVersion'), variables('appPassword'))]",
+        "cloudAccountId": "[uniqueString(subscription().subscriptionId)]",
+        "stackUniqueId": "[concat(parameters('stackId'), uniquestring(resourceGroup().id))]",
+        "dnsPrefix": "[concat(variables('stackUniqueId'), '-')]",
+        "newStorageAccountName": "[concat(uniquestring(resourceGroup().id), 'storage')]",
+        "linuxConfigurationSshPublicKey": {
+            "disablePasswordAuthentication": true,
+            "ssh": {
+                "publicKeys": [
+                    {
+                        "path": "/home/bitnami/.ssh/authorized_keys",
+                        "keyData": "[parameters('sshKey')]"
+                    }
+                ]
+            }
+        },
+        "linuxConfigurationPassword": {
+            "disablePasswordAuthentication": false
+        },
+        "vnet": {
+            "name": "network"
+        },
+        "subnet": {
+            "name": "default-subnet",
+            "ref": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'network', 'default-subnet')]"
+        },
+        "peerAddressIndex": 1,
+        "machineCount": 2,
+        "machineTierMap": "[concat('frontend=1,database,0,')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "[variables('storageApiVersion')]",
+            "name": "[variables('newStorageAccountName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "kind": "Storage"
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "[variables('networkAPIVersion')]",
+            "name": "default-subnet-sg",
+            "location": "[parameters('location')]",
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "pub_allow_tcp_port_22",
+                        "properties": {
+                            "description": "Allow inbound tcp port 22 from Internet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": 22,
+                            "sourceAddressPrefix": "Internet",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 201,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "pub_allow_tcp_port_80",
+                        "properties": {
+                            "description": "Allow inbound tcp port 80 from Internet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": 80,
+                            "sourceAddressPrefix": "Internet",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 202,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "pub_allow_tcp_port_443",
+                        "properties": {
+                            "description": "Allow inbound tcp port 443 from Internet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": 443,
+                            "sourceAddressPrefix": "Internet",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 203,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "[variables('networkAPIVersion')]",
+            "name": "[variables('vnet').name]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkSecurityGroups/', 'default-subnet-sg')]"
+            ],
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.0.0.0/24"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "default-subnet",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'default-subnet-sg')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deployments",
+            "apiVersion": "[variables('resourcesAPIVersion')]",
+            "name": "pid-4dc1be84-5575-4c87-8f27-4a00f3612e55",
+            "properties": {
+                "mode": "Incremental",
+                "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "resources": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "[variables('networkAPIVersion')]",
+            "name": "[concat(parameters('stackId'), '0nic')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vnet').name)]",
+                "[concat('Microsoft.Network/publicIPAddresses/', variables('publicIPAddressName'))]"
+            ],
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnet').ref]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "[variables('networkAPIVersion')]",
+            "name": "[concat(parameters('stackId'), copyIndex(1), 'nic')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/virtualNetworks/', variables('vnet').name)]"
+            ],
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[variables('subnet').ref]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "copy": {
+                "name": "niccopy",
+                "count": "[sub(variables('machineCount'), 1)]"
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "[variables('networkAPIVersion')]",
+            "name": "[variables('publicIPAddressName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[concat(variables('dnsPrefix'), 'vm0')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "[variables('computeAPIVersion')]",
+            "name": "[concat(parameters('stackId'), copyIndex())]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Storage/storageAccounts/', variables('newStorageAccountName'))]",
+                "[concat('Microsoft.Network/networkInterfaces/', concat(parameters('stackId'), copyIndex(), 'nic'))]"
+            ],
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "plan": {
+                "publisher": "bitnami",
+                "product": "wordpress-frontend-database-multitier-image",
+                "name": "default"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[concat(parameters('stackId'), copyIndex())]",
+                    "adminUsername": "bitnami",
+                    "adminPassword": "[if(equals(parameters('authenticationType'), 'password'), parameters('adminPassword'), '')]",
+                    "customData": "[base64(concat('\n', '# PROVISIONER_APP_PASSWORD=', variables('appPassword'), '\n', '# PROVISIONER_PEER_NODES_COUNT=', variables('machineCount'), '\n', '# PROVISIONER_PEER_NODES_INDEX=', copyIndex(), '\n', '# PROVISIONER_PEER_NODES_PREFIX=', parameters('stackId'), '\n', '# PROVISIONER_PEER_PASSWORD_INPUT=', variables('uniqueDeploymentString'), '\n', '# PROVISIONER_SHARED_UNIQUE_ID_INPUT=', variables('uniqueDeploymentString'), '\n', '# PROVISIONER_CLOUD_ACCOUNT_ID=', variables('cloudAccountId'), '\n', '# PROVISIONER_TIER_MAP=', variables('machineTierMap'), copyIndex(), '\n', '# PROVISIONER_PEER_ADDRESS=', reference(concat(parameters('stackId'), variables('peerAddressIndex'), 'nic')).ipConfigurations[0].properties.privateIPAddress, '\n', '# PROVISIONER_PEER_PASSWORD=', variables('databasePassword'), '\n', parameters('customData')))]",
+                    "linuxConfiguration": "[if(equals(parameters('authenticationType'), 'password'), variables('linuxConfigurationPassword'), variables('linuxConfigurationSshPublicKey'))]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "bitnami",
+                        "offer": "wordpress-frontend-database-multitier-image",
+                        "sku": "default",
+                        "version": "5.3.2001101800"
+                    },
+                    "osDisk": {
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    },
+                    "dataDisks": [
+                        {
+                            "diskSizeGB": "[parameters('dataDiskSize')]",
+                            "lun": 0,
+                            "createOption": "empty"
+                        }
+                    ]
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('stackId'), copyIndex(), 'nic'))]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true,
+                        "storageUri": "[reference(variables('newStorageAccountName')).primaryEndpoints.blob]"
+                    }
+                }
+            },
+            "copy": {
+                "name": "vmcopy",
+                "count": "[variables('machineCount')]"
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines/extensions",
+            "apiVersion": "[variables('computeAPIVersion')]",
+            "name": "[concat(concat(parameters('stackId'), copyIndex()), '/setupMachine')]",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Compute/virtualMachines/', concat(parameters('stackId'), copyIndex()))]"
+            ],
+            "tags": {
+                "provider": "[toUpper(parameters('BitnamiTags').provider)]"
+            },
+            "properties": {
+                "publisher": "Microsoft.Azure.Extensions",
+                "type": "CustomScript",
+                "typeHandlerVersion": "2.0",
+                "autoUpgradeMinorVersion": true,
+                "protectedSettings": {
+                    "commandToExecute": "sh /opt/bitnami/scripts/wait_provisioner_first_boot"
+                }
+            },
+            "copy": {
+                "name": "vmextcopy",
+                "count": "[variables('machineCount')]"
+            }
+        }
+    ],
+    "outputs": {
+        "fqdn": {
+            "type": "String",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))).dnsSettings.fqdn]"
+        }
+    }
+}
