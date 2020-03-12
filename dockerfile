@@ -1,15 +1,9 @@
-FROM golang:1.8  as builder
-FROM golang:1.8
+FROM node:current-slim
 
-WORKDIR /go/src/app
-COPY . .
-RUN go-wrapper download
-RUN go-wrapper install
+WORKDIR /etc/src/app
+COPY template.json
+RUN npm install
 
-FROM alpine:latest  
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from= as builder /go/app .
-EXPOSE 9116
+EXPOSE 8080
 CMD ["./app"]  
-CMD ["go-wrapper", "run"] # ["app"]
+COPY . .
