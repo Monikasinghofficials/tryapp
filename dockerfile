@@ -13,9 +13,3 @@ COPY --from= as builder /go/app .
 EXPOSE 9116
 CMD ["./app"]  
 CMD ["go-wrapper", "run"] # ["app"]
-
-# Once 17.05 has arrived
-#FROM alpine:latest  
-#RUN apk --no-cache add ca-certificates
-#WORKDIR /root/
-#COPY --from= as builder /go/app .
